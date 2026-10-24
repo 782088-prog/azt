@@ -1,0 +1,885 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Декомпозиция и юнит-экономика АЗТ</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap">
+<style>
+/* Слева ползунки, справа: проверка одной продажи → цепочка → где рычаг */
+:root {
+  --bg: #f6f7f9;
+  --card: #ffffff;
+  --fg: #111827;
+  --muted: #6b7280;
+  --line: #e3e6eb;
+  --accent: #1e3a5f;
+  --accent-soft: #e8eef6;
+  --input: #fffaf0;
+  --input-line: #c9cfd8;
+  --good: #1d7a46;
+  --good-soft: #e6f4ec;
+  --bad: #b42318;
+  --bad-soft: #fdecea;
+  --warn: #b7791f;
+  --font: "Golos Text", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f141b; --card: #171e28; --fg: #e8ecf2; --muted: #9aa4b2; --line: #2a3340;
+    --accent: #8fb3e0; --accent-soft: #1d2a3b; --input: #1f2630; --input-line: #3a4554;
+    --good: #5fcf8f; --good-soft: #15291f; --bad: #ff8a80; --bad-soft: #3a1c1a; --warn: #f2c14e;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f141b; --card: #171e28; --fg: #e8ecf2; --muted: #9aa4b2; --line: #2a3340;
+  --accent: #8fb3e0; --accent-soft: #1d2a3b; --input: #1f2630; --input-line: #3a4554;
+  --good: #5fcf8f; --good-soft: #15291f; --bad: #ff8a80; --bad-soft: #3a1c1a; --warn: #f2c14e;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 15px; line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px 40px;
+}
+.wrap { max-width: 1080px; margin: 0 auto; display: grid; gap: 20px; }
+header { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: end; justify-content: space-between; }
+header h1 { margin: 0; font-size: 26px; font-weight: 700; text-wrap: balance; }
+header p { margin: 4px 0 0; color: var(--muted); }
+.grid { display: grid; grid-template-columns: minmax(0, 360px) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 800px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.col { display: grid; gap: 20px; min-width: 0; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
+.card h2 { margin: 0 0 12px; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+
+/* Переключатель режима */
+.mode { display: inline-flex; border: 1px solid var(--input-line); border-radius: 8px; overflow: hidden; background: var(--card); }
+.mode button {
+  font: inherit; font-size: 14px; font-weight: 500; padding: 8px 14px; border: 0; background: none; color: var(--muted); cursor: pointer;
+}
+.mode button[aria-pressed="true"] { background: var(--accent); color: var(--card); }
+.mode button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* Поля с ползунками */
+.fields { display: grid; gap: 14px; }
+.field .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.field label { font-weight: 500; }
+.field .hint { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.inp { position: relative; width: 140px; flex: none; }
+.inp input {
+  width: 100%; font: inherit; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right;
+  padding: 5px 30px 5px 8px; border: 1.5px solid var(--input-line); border-radius: 7px; background: var(--input); color: var(--fg);
+}
+.inp input.w { padding-right: 42px; }
+.inp input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.inp span { position: absolute; right: 9px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+input[type="range"] { width: 100%; accent-color: var(--accent); margin: 2px 0 0; }
+.sep { border-top: 1px solid var(--line); }
+button.reset {
+  font: inherit; font-size: 13px; color: var(--muted); background: none; border: 1px solid var(--line);
+  border-radius: 6px; padding: 6px 10px; cursor: pointer; justify-self: start;
+}
+button.reset:hover { color: var(--fg); border-color: var(--input-line); }
+button.reset:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Три плитки про одну продажу */
+.tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 560px) { .tiles { grid-template-columns: minmax(0, 1fr); } }
+.tile { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.tile .lbl { font-size: 12.5px; color: var(--muted); }
+.tile .big { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.tile .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.tile.ok { border-color: var(--good); background: var(--good-soft); } .tile.ok .big { color: var(--good); }
+.tile.bad { border-color: var(--bad); background: var(--bad-soft); } .tile.bad .big { color: var(--bad); }
+.warn { border: 1px solid var(--bad); background: var(--bad-soft); color: var(--fg); border-radius: 10px; padding: 12px 16px; font-size: 14px; }
+.warn b { color: var(--bad); }
+
+/* Цепочка */
+.step {
+  display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 2px 14px; align-items: center;
+  padding: 12px 0; border-bottom: 1px solid var(--line);
+}
+.step:last-child { border-bottom: 0; }
+.num {
+  grid-row: span 2; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+  font-weight: 600; font-size: 13px; background: var(--accent-soft); color: var(--accent);
+}
+.step .name { font-weight: 600; font-size: 16px; }
+.step .how { grid-column: 2; font-size: 12.5px; color: var(--muted); }
+.step .val { grid-row: span 2; grid-column: 3; text-align: right; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.step .val small { display: block; font-size: 12px; font-weight: 400; color: var(--muted); }
+.step.main .num { background: var(--accent); color: var(--card); }
+.step.main .val { color: var(--accent); }
+.step.neg .val { color: var(--bad); }
+@media (max-width: 420px) { .step .val { font-size: 19px; } }
+
+/* Рычаги */
+.lead { margin: -4px 0 12px; font-size: 13.5px; color: var(--muted); }
+.lever { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.lever:last-child { border-bottom: 0; }
+.lever .t { font-weight: 600; }
+.lever .plus { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--good); white-space: nowrap; }
+.lever .bar { grid-column: 1 / -1; height: 8px; border-radius: 4px; background: var(--accent-soft); overflow: hidden; }
+.lever .bar i { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+.lever .do { grid-column: 1 / -1; font-size: 12.5px; color: var(--muted); }
+.lever.top { background: var(--accent-soft); margin: 0 -10px; padding: 10px; border-radius: 8px; border-bottom: 0; }
+.lever.top .bar { background: var(--card); }
+.lever .t .now { display: block; font-size: 12.5px; font-weight: 500; color: var(--muted); }
+.lever .do .goal { display: block; color: var(--fg); margin-bottom: 2px; }
+.lever .do em { font-style: normal; white-space: nowrap; }
+.lever.hold .plus { color: var(--muted); font-weight: 600; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; background: var(--line); }
+.dot.r { background: var(--bad); } .dot.y { background: var(--warn); } .dot.g { background: var(--good); }
+.lvl { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+.extra { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); display: grid; gap: 4px; }
+.extra b { color: var(--fg); font-weight: 600; }
+details.norms { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+details.norms summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+details.norms .hint { font-size: 12.5px; color: var(--muted); margin: 6px 0; }
+.nrow { display: grid; grid-template-columns: minmax(0, 1fr) 76px 76px; gap: 8px; align-items: end; padding: 6px 0; font-size: 13px; border-bottom: 1px solid var(--line); }
+.nrow label { display: grid; gap: 2px; font-size: 11px; color: var(--muted); }
+.nrow input { width: 100%; font: inherit; font-size: 14px; font-weight: 600; text-align: right; padding: 3px 6px; border: 1.5px solid var(--input-line); border-radius: 6px; background: var(--input); color: var(--fg); }
+.nrow input:focus { outline: none; border-color: var(--accent); }
+details.norms .reset { margin-top: 10px; }
+.note { font-size: 12.5px; color: var(--muted); margin: 0; }
+
+/* Себестоимость: свёрнуто — итог, раскрыто — разбивка */
+details.brk summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; align-items: center; }
+details.brk summary::-webkit-details-marker { display: none; }
+details.brk summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+.brk .bt { font-weight: 500; }
+.brk .bv { width: 140px; text-align: right; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; padding: 5px 9px; border: 1.5px solid var(--line); border-radius: 7px; }
+.brk .bs { grid-column: 1 / -1; font-size: 12.5px; color: var(--muted); }
+.brk .bs u { text-decoration: none; color: var(--accent); font-weight: 500; white-space: nowrap; }
+.brk[open] .bs u::after { content: " ▴"; } .brk:not([open]) .bs u::after { content: " ▾"; }
+.brk .bbody { margin-top: 10px; padding: 12px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); display: grid; gap: 12px; }
+.brk .bbody > .hint { margin: 0; }
+.brow { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.brow label { font-weight: 500; }
+.brow .inp { width: 120px; }
+.btot { font-size: 13px; border-top: 1px solid var(--line); padding-top: 10px; }
+.btot b { font-weight: 600; }
+
+/* Вкладки сверху */
+.tabsbar { max-width: 1080px; margin: 0 auto 20px; }
+.tabs { display: inline-flex; border: 1px solid var(--input-line); border-radius: 9px; overflow: hidden; background: var(--card); }
+.tabs a { font-size: 15px; font-weight: 600; padding: 9px 18px; color: var(--muted); text-decoration: none; }
+.tabs a[aria-current="page"] { background: var(--accent); color: var(--card); }
+.tabs a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* Только для юнит-экономики */
+#p_unit .field label code { font-family: inherit; font-size: 11px; font-weight: 500; color: var(--muted); letter-spacing: .03em; display: block; line-height: 1.2; }
+#p_unit .grp { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding-top: 12px; border-top: 1px solid var(--line); }
+#p_unit .grp:first-child { border-top: 0; padding-top: 0; }
+#p_unit .banner { border-radius: 10px; padding: 12px 16px; font-size: 14px; border: 1px solid var(--good); background: var(--good-soft); }
+#p_unit .banner b { color: var(--good); }
+#p_unit .banner.bad { border-color: var(--bad); background: var(--bad-soft); }
+#p_unit .banner.bad b { color: var(--bad); }
+#p_unit .step.minus .val { color: var(--muted); }
+#p_unit .tbl { overflow-x: auto; }
+#p_unit table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+#p_unit th, #p_unit td { padding: 9px 8px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+#p_unit th:first-child, #p_unit td:first-child { text-align: left; white-space: normal; }
+#p_unit th { font-size: 12px; font-weight: 500; color: var(--muted); }
+#p_unit td { font-size: 16px; font-weight: 600; }
+#p_unit td:first-child { font-size: 14px; font-weight: 500; }
+#p_unit tr:last-child td { border-bottom: 0; }
+#p_unit tr.goal td { color: var(--accent); }
+#p_unit .goalin { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+#p_unit .goalin label { font-weight: 500; }
+.lever { grid-template-columns: 26px minmax(0, 1fr) auto; gap: 4px 10px; align-items: baseline; }
+.lever .p { font-size: 13px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+.lever.top .p { color: var(--accent); }
+.lever .plus { text-align: right; }
+.lever .plus small { display: block; font-size: 12px; font-weight: 500; color: var(--muted); }
+.lever .bar, .lever .do { grid-column: 2 / -1; }
+</style>
+<div class="tabsbar"><nav class="tabs" aria-label="Раздел"><a href="#decomp" id="tab_decomp" data-tab="decomp">Декомпозиция</a><a href="#unit" id="tab_unit" data-tab="unit">Юнит-экономика</a></nav></div>
+<div id="p_decomp">
+
+<div class="wrap">
+  <header>
+    <div class="mode" role="group" aria-label="Режим расчёта">
+      <button type="button" id="mGoal" aria-pressed="true">От цели</button>
+      <button type="button" id="mLeads" aria-pressed="false">От заявок</button>
+    </div>
+  </header>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Ваши цифры (в месяц)</h2>
+      <div class="fields" id="fields"></div>
+      <details class="norms" id="n_decomp"></details>
+      <div style="margin-top:14px"><button class="reset" id="reset" type="button">Вернуть пример</button></div>
+    </section>
+
+    <div class="col">
+      <div class="tiles">
+        <div class="tile" id="tProfit"><div class="lbl">Остаётся с одной продажи</div><div class="big"></div><div class="sub"></div></div>
+        <div class="tile" id="tAd"><div class="lbl">Реклама на одну продажу</div><div class="big"></div><div class="sub"></div></div>
+        <div class="tile" id="tMax"><div class="lbl">Предел цены заявки</div><div class="big"></div><div class="sub"></div></div>
+      </div>
+      <div class="warn" id="warn" hidden></div>
+
+      <section class="card">
+        <h2 id="chainTitle">Что нужно сделать за месяц</h2>
+        <div id="chain"></div>
+      </section>
+
+      <section class="card">
+        <h2>Где рычаг</h2>
+        <p class="lead" id="leverLead"></p>
+        <div id="levers"></div>
+      </section>
+
+      <p class="note">Цифры для примера, ставьте свои. Всё, что вы вводите, запоминается в этом браузере. Продажи, КП и заявки показаны в среднем за месяц, с дробью: 1,5 продажи в месяц — это 3 продажи за 2 месяца.</p>
+    </div>
+  </div>
+</div>
+
+</div>
+<div id="p_unit" hidden>
+
+<div class="wrap">
+  <div class="grid">
+    <section class="card">
+      <h2>Ваши цифры</h2>
+      <div class="fields" id="u_fields"></div>
+      <details class="norms" id="n_unit"></details>
+      <div style="margin-top:14px"><button class="reset" id="u_reset" type="button">Вернуть пример</button></div>
+    </section>
+
+    <div class="col">
+      <div class="tiles">
+        <div class="tile" id="tMonth"><div class="lbl">Прибыль в месяц</div><div class="big"></div><div class="sub"></div></div>
+        <div class="tile" id="tClient"><div class="lbl">Даёт 1 клиент</div><div class="big"></div><div class="sub"></div></div>
+        <div class="tile" id="tNew"><div class="lbl">Новых клиентов в месяц</div><div class="big"></div><div class="sub"></div></div>
+      </div>
+      <div class="banner" id="banner"></div>
+
+      <section class="card">
+        <h2>Как складывается прибыль за год</h2>
+        <div id="u_chain"></div>
+      </section>
+
+      <section class="card">
+        <h2>Сколько нужно продаж</h2>
+        <div class="tbl"><table>
+          <thead><tr><th>Цель</th><th>Прибыль в месяц</th><th>Клиентов за год</th><th>Продаж в месяц</th><th>Заявок в месяц</th><th>Реклама в месяц</th></tr></thead>
+          <tbody id="need"></tbody>
+        </table></div>
+        <p class="note" id="needNote"></p>
+        <div class="goalin">
+          <label for="u_goal">Ваша цель в месяц</label>
+          <div class="inp"><input id="u_goal" inputmode="decimal"><span>₽</span></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Где рычаг</h2>
+        <p class="lead">Сколько прибавится к прибыли в месяц, если подтянуть цифру до следующей ступени светофора: из красного в норму, из нормы в «хорошо». Приоритет 1 — давить в первую очередь, зелёные — держать.</p>
+        <div id="u_levers"></div>
+      </section>
+
+      <p class="note">Цифры для примера (как в таблице), ставьте свои. Всё, что вы вводите, запоминается в этом браузере. Цена одного касания считается сама: реклама × 12 ÷ касаний. В «Где рычаг» и «Сколько нужно продаж» при росте касаний реклама растёт вместе с ними.</p>
+    </div>
+  </div>
+</div>
+
+</div>
+<script>
+// Общее для обеих вкладок: светофор, строки рычагов, блок «Мои ориентиры».
+// Ориентир: lo — граница нормы, hi — граница «хорошо»; down — меньше значит лучше (доля рекламы)
+const LIGHT = { r: "ниже нормы", y: "норма", g: "хорошо", "": "" };
+const fmt1 = n => n.toLocaleString("ru-RU", { maximumFractionDigits: 1 });
+const pct = n => isFinite(n) ? fmt1(n) + "%" : "—";
+const num = s => parseFloat(String(s).replace(/[\s ]/g, "").replace(",", "."));
+function light(v, n) {
+  if (n.down) return v > n.lo ? "r" : v > n.hi ? "y" : "g";
+  return v < n.lo ? "r" : v < n.hi ? "y" : "g";
+}
+// Следующая ступень: из красного в норму, из нормы в «хорошо», зелёное — держать
+const nextStep = (v, n) => ({ r: n.lo, y: n.hi, g: null })[light(v, n)];
+const dot = l => `<i class="dot ${l}" aria-hidden="true"></i>`;
+// Ползунок: если вписано больше его конца, конец растягивается до этого числа, чтобы цифра не терялась
+const fit = (rng, f, v) => { rng.max = Math.max(f.max, v); rng.value = v; };
+const normText = (n, f = pct) => n.down ? `норма до ${f(n.lo)}, хорошо до ${f(n.hi)}` : `норма от ${f(n.lo)}, хорошо от ${f(n.hi)}`;
+// Сколько нужно, чтобы выйти на цель только этой цифрой
+const verdictUp = (n, cur, hi, f) => !isFinite(n) || n < 0 ? "" : n <= cur ? "Цели хватает и с нынешней цифрой." :
+  `Выйти на цель только этим: нужно ${f(n)}, ${n <= hi ? "реально" : "выше «хорошо», в одиночку нереально"}.`;
+
+function loadNorms(key, N0) {
+  const N = JSON.parse(JSON.stringify(N0));
+  try {
+    const s = JSON.parse(localStorage.getItem(key)) || {};
+    for (const k in N) {
+      if (s[k] == null) continue;
+      if (typeof N[k] === "object") { if (isFinite(s[k].lo)) N[k].lo = +s[k].lo; if (isFinite(s[k].hi)) N[k].hi = +s[k].hi; }
+      else if (isFinite(s[k])) N[k] = +s[k];
+    }
+  } catch (e) {}
+  return N;
+}
+function normsBox(box, defs, N, N0, key, onChange) {
+  const save = () => { try { localStorage.setItem(key, JSON.stringify(N)); } catch (e) {} };
+  const inp = (k, w, v) => `<input data-k="${k}" data-w="${w}" inputmode="decimal" value="${fmt1(v)}" aria-label="${k} ${w}">`;
+  const draw = () => {
+    box.innerHTML = `<summary>Мои ориентиры</summary>
+      <p class="hint">Границы светофора. Пока это примерные цифры: когда наберутся свои факты за 2–3 месяца, поставьте свои.</p>`
+      + defs.map(d => d.single
+        ? `<div class="nrow"><span>${d.label}</span><span></span><label>${d.unit}${inp(d.k, "", N[d.k])}</label></div>`
+        : `<div class="nrow"><span>${d.label}</span><label>норма ${N[d.k].down ? "до" : "от"}, ${d.unit}${inp(d.k, "lo", N[d.k].lo)}</label><label>хорошо ${N[d.k].down ? "до" : "от"}${inp(d.k, "hi", N[d.k].hi)}</label></div>`).join("")
+      + `<button class="reset" type="button">Вернуть ориентиры</button>`;
+  };
+  box.addEventListener("input", e => {
+    const t = e.target, v = num(t.value);
+    if (!t.dataset.k || !isFinite(v)) return;
+    if (t.dataset.w) N[t.dataset.k][t.dataset.w] = v; else N[t.dataset.k] = v;
+    save(); onChange();
+  });
+  box.addEventListener("click", e => {
+    if (!e.target.classList.contains("reset")) return;
+    Object.assign(N, JSON.parse(JSON.stringify(N0))); save(); draw(); onChange();
+  });
+  draw();
+}
+// r: { l, name, now, big, sub, w (0..1), goal, do, cost }
+function leverRows(rows) {
+  return rows.map((r, i) => `
+    <div class="lever ${i === 0 && r.w > 0 ? "top" : ""} ${r.w > 0 ? "" : "hold"}">
+      <div class="p">${r.w > 0 ? i + 1 : "—"}</div>
+      <div class="t">${r.l ? dot(r.l) : ""}${r.name}<span class="now">${r.now}</span></div>
+      <div class="plus">${r.big}<small>${r.sub}</small></div>
+      ${r.w > 0 ? `<div class="bar"><i style="width:${r.w * 100}%"></i></div>` : ""}
+      <div class="do">${r.goal ? `<span class="goal">${r.goal}</span>` : ""}${r.do} <em>· ${r.cost}</em></div>
+    </div>`).join("");
+}
+
+(() => {
+const FIELDS = [
+  { k: "goal",  label: "Хочу себе",               unit: "₽", min: 0,    max: 1000000, step: 10000, mode: "goal" },
+  { k: "leads", label: "Заявок в месяц",          unit: "шт", min: 0,   max: 500,     step: 1,     mode: "leads" },
+  { k: "fixed", label: "Постоянные расходы",      unit: "₽", min: 0,    max: 300000,  step: 5000,  hint: "Связь, CRM, помощник, машина: всё, что платите каждый месяц." },
+  { sep: true },
+  { k: "check", label: "Средний чек",             unit: "₽", min: 5000, max: 500000,  step: 5000, lvl: true },
+  { k: "tax",   label: "Налог",                   unit: "%", min: 0,    max: 20,      step: 1,     hint: "Вы самозанятый: 6% от чека. Обычно менять не нужно." },
+  { k: "deal",  label: "Расходы на одну сделку",  unit: "₽", min: 0,    max: 150000,  step: 1000,  lvl: true, brk: true, hint: "Помощники, расходные материалы, дорога: всё, что тратите на один объект. Не знаете точно? Возьмите все такие расходы за месяц и разделите на число сделок за этот месяц." },
+  { sep: true },
+  { k: "c1",    label: "Из заявки в КП",          unit: "%", min: 1,    max: 90,      step: 1,     lvl: true, hint: "Из 10 заявок до КП доходят 3 → 30%." },
+  { k: "c2",    label: "Из КП в продажу",         unit: "%", min: 1,    max: 70,      step: 1,     lvl: true },
+  { k: "cpl",   label: "Цена одной заявки",       unit: "₽", min: 0,    max: 4000,    step: 100,   lvl: true },
+];
+// Необязательная разбивка расходов на одну сделку, в рублях; если что-то вписано, сумма встаёт в поле
+const BRK = [
+  { k: "bh", label: "Помощникам",          hint: "Сколько платите помощникам за один объект." },
+  { k: "bm", label: "Расходные материалы", hint: "Фитинги, крепёж, герметики, мелочи. Только расходники, не материалы клиента." },
+  { k: "br", label: "Дорога и прочее",     hint: "Бензин, парковка, доставка, комиссии." },
+];
+const EXAMPLE = { goal: 200000, leads: 60, fixed: 50000, check: 60000, var: 20, tax: 6, deal: 6000, bh: 0, bm: 0, br: 0, c1: 30, c2: 30, cpl: 1500, mode: "goal" };
+const STORE = "azt-decomp-v2";
+const $ = id => document.getElementById(id);
+const rub = n => (n < 0 ? "−" : "") + Math.round(Math.abs(n)).toLocaleString("ru-RU") + " ₽";
+const cnt = n => Math.round(n).toLocaleString("ru-RU");
+const one = n => (Math.round(n * 10) / 10).toLocaleString("ru-RU", { maximumFractionDigits: 1 });
+const parse = s => parseFloat(String(s).replace(/[\s ]/g, "").replace(",", ".")) || 0;
+
+let S = { ...EXAMPLE };
+try { Object.assign(S, JSON.parse(localStorage.getItem(STORE)) || {}); } catch (e) {}
+const save = () => { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch (e) {} };
+
+// Поля с ползунками
+const box = $("fields");
+FIELDS.forEach(f => {
+  if (f.sep) { box.insertAdjacentHTML("beforeend", '<div class="sep"></div>'); return; }
+  box.insertAdjacentHTML("beforeend", `
+    <div class="field" id="f_${f.k}">
+      <div class="top"><label for="${f.k}">${f.label}</label>
+        <div class="inp"><input id="${f.k}" inputmode="decimal"${f.unit.length > 2 ? ' class="w"' : ""}><span>${f.unit}</span></div></div>
+      <input type="range" id="r_${f.k}" min="${f.min}" max="${f.max}" step="${f.step}" aria-label="${f.label}">
+      ${f.lvl ? `<div class="lvl" id="lv_${f.k}"></div>` : ""}
+      ${f.hint ? `<div class="hint">${f.hint}</div>` : ""}
+      ${f.brk ? `<details class="brk" id="f_brk"><summary><span class="bs"><u id="brkSum"></u></span></summary>
+        <div class="bbody">
+          <p class="hint">Можно не заполнять. Если впишете, сумма сама встанет в поле выше.</p>
+          ${BRK.map(b => `<div class="brow"><div><label for="b_${b.k}">${b.label}</label><div class="hint">${b.hint}</div></div>
+            <div class="inp"><input id="b_${b.k}" inputmode="decimal"><span>₽</span></div></div>`).join("")}
+          <div class="btot" id="brkTot"></div>
+        </div>
+      </details>` : ""}
+    </div>`);
+  const num = $(f.k), rng = $("r_" + f.k);
+  // Поле вписано руками: разбивка больше не про него, обнуляем
+  const own = () => { if (f.brk) BRK.forEach(b => { S[b.k] = 0; $("b_" + b.k).value = "0"; }); };
+  num.addEventListener("input", () => { S[f.k] = parse(num.value); fit(rng, f, S[f.k]); own(); update(); });
+  num.addEventListener("blur", () => { num.value = cnt(S[f.k]); });
+  rng.addEventListener("input", () => { S[f.k] = +rng.value; num.value = cnt(S[f.k]); own(); update(); });
+  if (f.brk) BRK.forEach(b => {
+    const el = $("b_" + b.k);
+    el.addEventListener("input", () => {
+      S[b.k] = parse(el.value);
+      const sum = BRK.reduce((a, x) => a + S[x.k], 0);
+      if (sum > 0) { S[f.k] = sum; num.value = cnt(sum); fit(rng, f, sum); }
+      update();
+    });
+    el.addEventListener("blur", () => { el.value = cnt(S[b.k]); });
+  });
+});
+function fillInputs() {
+  FIELDS.forEach(f => { if (!f.k) return; $(f.k).value = cnt(S[f.k]); fit($("r_" + f.k), f, S[f.k]); });
+  BRK.forEach(b => { $("b_" + b.k).value = cnt(S[b.k]); });
+}
+
+// Расчёт «от заявок»: сколько остаётся себе (дробные продажи, без округления)
+function fromLeads(p, leads) {
+  const sales = leads * p.c1 / 100 * p.c2 / 100;
+  const revenue = sales * p.check;
+  return revenue * (1 - p.var / 100) - leads * p.cpl - p.fixed;
+}
+
+function update() {
+  save();
+  const goalMode = S.mode === "goal";
+  $("mGoal").setAttribute("aria-pressed", goalMode);
+  $("mLeads").setAttribute("aria-pressed", !goalMode);
+  $("f_goal").hidden = !goalMode;
+  $("f_leads").hidden = goalMode;
+
+  // Доля с продажи = налог (%) + расходы на сделку (₽) в пересчёте на % от чека
+  S.var = S.check > 0 ? S.tax + S.deal / S.check * 100 : S.tax;
+  $("lv_deal").textContent = `${S.check > 0 ? pct(S.deal / S.check * 100) : "—"} от чека · вместе с налогом ${rub(S.check * S.var / 100)} с каждой сделки`;
+  $("brkSum").textContent = $("f_brk").open ? "свернуть" : "расписать";
+  const parts = BRK.filter(b => S[b.k] > 0);
+  $("brkTot").innerHTML = parts.length
+    ? `<b>Итого на одну сделку:</b> ` + parts.map(b => `${b.label.toLowerCase()} ${rub(S[b.k])}`).join(" + ") + ` = <b>${rub(S.deal)}</b>`
+    : `Пока не расписано: в поле ${rub(S.deal)} одной суммой.`;
+
+  const c1 = S.c1 / 100, c2 = S.c2 / 100;
+  const adPerSale = c1 * c2 > 0 ? S.cpl / (c1 * c2) : Infinity;
+  const varPerSale = S.check * S.var / 100;
+  const profit = S.check - varPerSale - adPerSale;
+  const maxCpl = S.check * (1 - S.var / 100) * c1 * c2;
+
+  const tile = (id, cls, big, sub) => {
+    const t = $(id); t.className = "tile " + cls;
+    t.querySelector(".big").textContent = big; t.querySelector(".sub").textContent = sub;
+  };
+  tile("tProfit", profit > 0 ? "ok" : "bad", isFinite(profit) ? rub(profit) : "—", "чек − налог − расходы на сделку − реклама");
+  tile("tAd", "", isFinite(adPerSale) ? rub(adPerSale) : "—", `≈ ${one(1 / (c1 * c2 || 1))} заявок на продажу`);
+  tile("tMax", S.cpl > maxCpl ? "bad" : "", rub(maxCpl), S.cpl > maxCpl ? "сейчас дороже, реклама в минус" : "дороже нельзя: реклама съест прибыль");
+
+  const warn = $("warn");
+  warn.hidden = profit > 0;
+  if (!(profit > 0)) warn.innerHTML = `<b>Продажа в минус.</b> С чека ${rub(S.check)} уходит ${rub(varPerSale)} на налог и расходы на сделку и ${isFinite(adPerSale) ? rub(adPerSale) : "—"} на рекламу. Опустите цену заявки ниже ${rub(maxCpl)} или поднимите чек и конверсии.`;
+
+  // Цепочка
+  const step = (n, name, val, how, cls = "") =>
+    `<div class="step ${cls}"><div class="num">${n}</div><div class="name">${name}</div><div class="val">${val}</div><div class="how">${how}</div></div>`;
+  // В неделю — без округления вверх: 2 продажи в месяц это ≈ 0,5 в неделю, а не 1
+  const week = n => `<small>≈ ${one(Math.round(n / 4.3 * 10) / 10)} в неделю</small>`;
+  let leads, html;
+
+  if (goalMode) {
+    $("chainTitle").textContent = "Что нужно сделать за месяц";
+    const need = S.goal + S.fixed;
+    if (profit > 0) {
+      // Порядок: цель → выручка → продажи → КП → заявки → реклама → куда уйдёт выручка
+      // Без округления: 1,6 продажи в месяц — это 16 продаж за 10 месяцев, выручка не прыгает ступеньками по чеку
+      const sales = need / profit, kp = sales / c2;
+      leads = kp / c1;
+      const rev = sales * S.check, ad = leads * S.cpl, cost = sales * varPerSale;
+      html = step(1, "Выручка", rub(rev), `${one(sales)} продаж × средний чек ${rub(S.check)}`)
+        + step(2, "Продаж", one(sales) + week(sales),
+            `С одной продажи остаётся ${rub(profit)}: чек ${rub(S.check)} − налог и расходы на сделку ${rub(varPerSale)} − реклама ${rub(adPerSale)}. `
+            + `Нужно (себе + постоянные) ${rub(need)} ÷ ${rub(profit)} = ${one(sales)}`)
+        + step(3, "Отправить КП", one(kp) + week(kp), `${one(sales)} продаж ÷ «из КП в продажу» ${pct(S.c2)}`)
+        + step(4, "Получить заявок", one(leads) + week(leads), `${one(kp)} КП ÷ «из заявки в КП» ${pct(S.c1)}`)
+        + step(5, "Бюджет на рекламу", rub(ad), `${one(leads)} заявок × ${rub(S.cpl)}`)
+        + step(6, "Себе и постоянные", rub(need), `себе ${rub(S.goal)} + постоянные ${rub(S.fixed)}`)
+        + step(7, "Налог и расходы на сделки", rub(cost), `${one(sales)} продаж × ${rub(varPerSale)}`);
+    } else {
+      leads = 0;
+      html = step(1, "Продаж", "—", "цель недостижима, пока продажа в минус");
+    }
+  } else {
+    $("chainTitle").textContent = "Что получится за месяц";
+    leads = S.leads;
+    const kp = leads * c1, sales = kp * c2, rev = sales * S.check, me = fromLeads(S, leads);
+    html = step(1, "Заявок", cnt(leads) + week(leads), "сколько приходит в месяц")
+      + step(2, "КП", one(kp), "заявки × «из заявки в КП»")
+      + step(3, "Продаж", one(sales), "КП × «из КП в продажу»")
+      + step(4, "Выручка", rub(rev), "продажи × средний чек")
+      + step(5, "Расходы", rub(rev * S.var / 100 + leads * S.cpl + S.fixed), "налог и расходы на сделки + реклама + постоянные")
+      + step(6, "Остаётся себе", rub(me), "выручка − все расходы", me >= 0 ? "main" : "main neg");
+  }
+  $("chain").innerHTML = html;
+  paintLights();
+  drawLevers(leads, goalMode);
+}
+
+const NORM0 = { c1: { lo: 15, hi: 30 }, c2: { lo: 20, hi: 35 }, ad: { lo: 50, hi: 25, down: true }, cap: 80000 };
+const N = loadNorms("azt-decomp-norms", NORM0);
+// Доля рекламы: какая часть денег, что остаются с продажи после налога и расходов, уходит на заявки
+const adShare = p => {
+  const k = p.c1 / 100 * p.c2 / 100, left = p.check * (1 - p.var / 100);
+  return k > 0 && left > 0 ? p.cpl / k / left * 100 : Infinity;
+};
+const cplFor = (p, share) => share / 100 * p.check * (1 - p.var / 100) * p.c1 / 100 * p.c2 / 100;
+const money = n => isFinite(n) ? rub(n) : "—";
+// Красная зона цены заявки: дороже этой цены реклама съедает больше границы нормы
+function redZone() {
+  const red = cplFor(S, N.ad.lo);
+  return S.cpl <= red ? `до красной зоны ${rub(red - S.cpl)}: граница ${rub(red)}` : `уже в красной зоне: граница ${rub(red)}, дороже на ${rub(S.cpl - red)}`;
+}
+
+function paintLights() {
+  const lv = (k, html) => { $("lv_" + k).innerHTML = html; };
+  ["c1", "c2"].forEach(k => { const l = light(S[k], N[k]); lv(k, `${dot(l)}сейчас ${LIGHT[l]} · ${normText(N[k])}`); });
+  const sh = adShare(S), la = light(sh, N.ad);
+  lv("cpl", `${dot(la)}реклама съедает ${isFinite(sh) ? pct(sh) : "всё"} денег с продажи · ${normText(N.ad)}<br>${redZone()}`);
+  lv("check", S.check < N.cap
+    ? `потолок ${rub(N.cap)} · запас ${pct((N.cap / S.check - 1) * 100)}`
+    : `${dot("y")}упёрлись в потолок ${rub(N.cap)}: дальше клиенты начнут уходить`);
+}
+
+// Плюс к «себе» в месяц при том же числе заявок; в режиме «от цели» L — сколько заявок нужно на цель
+const effect = (p, L) => fromLeads(p, L) - fromLeads(S, L);
+
+const LV = [
+  { k: "c1",    name: "Из заявки в КП",  do: "Быстро перезванивать, мелочь вежливо отсеивать, крупные не терять.", cost: "стоит: время" },
+  { k: "c2",    name: "Из КП в продажу", do: "Дожимать КП звонком, показывать отзывы и объекты, рассрочка.", cost: "стоит: время" },
+  { k: "ad",    name: "Цена заявки",     do: "Точнее настраивать рекламу, отключать дорогие объявления, усиливать бесплатные каналы.", cost: "стоит: время на настройку" },
+  { k: "check", name: "Средний чек",     do: "Пакеты, допработы, цена ближе к потолку.", cost: "риск потерять часть клиентов" },
+];
+function drawLevers(L, goalMode) {
+  if (!(L > 0)) {
+    $("leverLead").textContent = "Рычаги появятся, когда продажа будет в плюс и заявок больше нуля.";
+    $("levers").innerHTML = ""; return;
+  }
+  $("leverLead").textContent = goalMode
+    ? `Сколько прибавится «себе» сверх ${rub(S.goal)} в месяц при тех же ${one(L)} заявках, если подтянуть цифру до следующей ступени светофора: из красного в норму, из нормы в «хорошо».`
+    : `Сколько прибавится «себе» в месяц при ${cnt(L)} заявках, если подтянуть цифру до следующей ступени светофора. Цель — ${rub(S.goal)} себе (из режима «от цели»).`;
+  const m = 1 - S.var / 100, k = S.c1 / 100 * S.c2 / 100, T = S.goal;
+  const need = T + S.fixed + L * S.cpl, sh = adShare(S);
+  const rows = LV.map(d => {
+    let l, t, p = { ...S }, now, goal = "";
+    if (d.k === "c1" || d.k === "c2") {
+      l = light(S[d.k], N[d.k]); t = nextStep(S[d.k], N[d.k]);
+      if (t != null) p[d.k] = t;
+      now = `${LIGHT[l]}: ${pct(S[d.k])}` + (t != null ? ` → ${pct(t)}` : "");
+      if (!goalMode) {
+        const other = d.k === "c1" ? S.c2 : S.c1;
+        goal = verdictUp(need / (L * other / 100 * S.check * m) * 100, S[d.k], N[d.k].hi, pct);
+      }
+    } else if (d.k === "ad") {
+      l = isFinite(sh) ? light(sh, N.ad) : "r"; t = isFinite(sh) ? nextStep(sh, N.ad) : null;
+      if (t != null) p.cpl = cplFor(S, t);
+      now = `${LIGHT[l]}: реклама съедает ${pct(sh)} денег с продажи` + (t != null ? ` → ${pct(t)}, заявка до ${rub(p.cpl)}` : "")
+        + ` · ${redZone()}`;
+      if (!goalMode) {
+        const n = (L * k * S.check * m - S.fixed - T) / L;
+        goal = n >= S.cpl ? "Цели хватает и при нынешней цене заявки." : n > 0 ? `Выйти на цель только этим: заявка должна стоить ${rub(n)}.` : "Только удешевлением рекламы цель не взять.";
+      }
+    } else {
+      l = S.check < N.cap ? "" : "y"; t = S.check < N.cap ? N.cap : null;
+      if (t != null) p.check = t;
+      now = t != null ? `${rub(S.check)} → потолок ${rub(N.cap)}` : `упёрлись в потолок ${rub(N.cap)}`;
+      if (!goalMode && k * m > 0) {
+        const n = need / (L * k * m);
+        goal = n <= S.check ? "Цели хватает и с нынешним чеком." : `Выйти на цель только этим: нужен чек ${rub(n)}, ${n <= N.cap ? "в пределах потолка" : "выше потолка, только в паре с другими"}.`;
+      }
+    }
+    const g = t != null ? effect(p, L) : 0;
+    const sub = t == null ? "" : "в месяц";
+    return { ...d, l, now, g, sub, goal };
+  }).sort((a, b) => b.g - a.g);
+  const max = Math.max(...rows.map(r => r.g), 1);
+  rows.forEach(r => { r.w = r.g > 0 ? r.g / max : 0; r.big = r.g > 0 ? "+" + rub(r.g) : "держать"; });
+
+  // Цифры без ориентира: просто сколько даёт шаг
+  const ex = [];
+  const per = k * S.check * m - S.cpl;
+  ex.push(`Каждые +10 заявок: ${money(fromLeads(S, L + 10) - fromLeads(S, L))} в месяц (реклама уже вычтена).`);
+  if (!goalMode) ex.push(per > 0 ? `Выйти на цель только заявками: нужно ${cnt(Math.ceil((T + S.fixed) / per))} заявок в месяц.` : "Только заявками цель не взять: каждая новая заявка в минус.");
+  ex.push(`Расходы на сделку −1 000 ₽: +${money(effect({ ...S, var: S.var - 100000 / S.check }, L))} в месяц.`);
+  $("levers").innerHTML = leverRows(rows) + `<div class="extra"><b>Без ориентира</b>${ex.map(x => `<div>${x}</div>`).join("")}</div>`;
+}
+
+$("mGoal").addEventListener("click", () => { S.mode = "goal"; update(); });
+$("f_brk").addEventListener("toggle", update);
+$("mLeads").addEventListener("click", () => { S.mode = "leads"; update(); });
+$("reset").addEventListener("click", () => { S = { ...EXAMPLE, mode: S.mode }; fillInputs(); update(); });
+normsBox($("n_decomp"), [
+  { k: "c1", label: "Из заявки в КП", unit: "%" },
+  { k: "c2", label: "Из КП в продажу", unit: "%" },
+  { k: "ad", label: "Реклама от денег с продажи", unit: "%" },
+  { k: "cap", label: "Потолок чека", unit: "₽", single: true },
+], N, NORM0, "azt-decomp-norms", update);
+fillInputs(); update();
+})();
+(() => {
+const FIELDS = [
+  { grp: "Сколько касаний и как покупают (за год)" },
+  { k: "ua",   code: "UserAcquisition", label: "Касаний за год", unit: "шт", min: 0, max: 100000, step: 500, mo: true, hint: "Верх воронки: сколько раз за год потенциальные клиенты видят вас — показы рекламы, посты, сарафан." },
+  { k: "cr1",  code: "CR 1", label: "Из касаний в заявку",  unit: "%", min: 0.1, max: 10, step: 0.1, lvl: true, hint: "Обычно 1–5%." },
+  { k: "cr2",  code: "CR 2", label: "Из заявки в договор", unit: "%", min: 1, max: 30, step: 0.5, lvl: true },
+  { k: "apc",  code: "APC",  label: "Покупок 1 клиентом за год", unit: "раз", min: 1, max: 5, step: 0.1, lvl: true },
+  { grp: "Один заказ" },
+  { k: "avp",  code: "AvP",    label: "Средний чек",     unit: "₽", min: 10000, max: 2000000, step: 10000, lvl: true },
+  { k: "tx",   code: "",       label: "Налог",           unit: "%", min: 0, max: 20, step: 1, hint: "Вы самозанятый: 6% от чека. Обычно менять не нужно." },
+  { cbrk: true },
+  { k: "first",code: "1sCOGS", label: "Доп. расходы на 1-ю продажу", unit: "₽", min: 0, max: 200000, step: 1000, hint: "Разовые траты, чтобы получить нового клиента: выезд на замер, процент посреднику, скидка или подарок." },
+  { grp: "Расходы в месяц" },
+  { k: "ad",   code: "",    label: "Реклама в месяц",     unit: "₽", min: 0, max: 300000, step: 5000, lvl: true },
+  { k: "fix",  code: "FIX", label: "Постоянные расходы", unit: "₽", min: 0, max: 500000, step: 5000, hint: "Аренда, связь, машина, CRM. Без вашей зарплаты: ваша зарплата — это «Ваша цель в месяц»." },
+];
+const EXAMPLE = { ua: 20000, cr1: 1, cr2: 10, apc: 1.3, avp: 200000, tx: 6, help: 12000, road: 3000, other: 3000, first: 24000, ad: 40000, fix: 140000, goal: 300000 };
+const STORE = "azt-unit-v1";
+// Себестоимость одного заказа без налога, в рублях; налог — отдельно, % от чека
+const UBRK = [
+  { k: "help",  label: "Помощникам", hint: "Сколько платите помощникам за один заказ." },
+  { k: "road",  label: "Дорога",     hint: "Бензин, парковка, доставка на один объект." },
+  { k: "other", label: "Прочее",     hint: "Расходники, комиссии, мелочи." },
+];
+const costRub = p => UBRK.reduce((a, b) => a + (p[b.k] || 0), 0);
+const costOf = p => costRub(p) + p.avp * p.tx / 100;
+const $ = id => document.getElementById(id);
+const rub = n => isFinite(n) ? (n < 0 ? "−" : "") + Math.round(Math.abs(n)).toLocaleString("ru-RU") + " ₽" : "—";
+const cnt = n => Math.round(n).toLocaleString("ru-RU");
+const one = n => isFinite(n) ? n.toLocaleString("ru-RU", { maximumFractionDigits: 1 }) : "—";
+const show = (k, n) => (k === "cr1" || k === "apc") ? one(n) : cnt(n);
+const parse = s => parseFloat(String(s).replace(/[\s ]/g, "").replace(",", ".")) || 0;
+
+let S = { ...EXAMPLE };
+try { Object.assign(S, JSON.parse(localStorage.getItem(STORE)) || {}); } catch (e) {}
+const save = () => { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch (e) {} };
+
+const box = $("u_fields");
+FIELDS.forEach(f => {
+  if (f.grp) { box.insertAdjacentHTML("beforeend", `<div class="grp">${f.grp}</div>`); return; }
+  if (f.cbrk) {
+    box.insertAdjacentHTML("beforeend", `
+      <details class="field brk" id="u_cogs">
+        <summary><span class="bt">Себестоимость одного заказа</span><span class="bv" id="u_cogsV"></span><span class="bs" id="u_cogsS"></span></summary>
+        <div class="bbody">
+          <p class="hint">Сколько в среднем уходит на один заказ. Проще всего вспомнить 3–5 последних заказов, сложить траты по каждой строке и разделить на число заказов. Налог сюда не входит, он выше отдельно. Материалы оплачивает клиент, сюда они тоже не входят.</p>
+          ${UBRK.map(b => `<div class="brow"><div><label for="ub_${b.k}">${b.label}</label><div class="hint">${b.hint}</div></div>
+            <div class="inp"><input id="ub_${b.k}" inputmode="decimal"><span>₽</span></div></div>`).join("")}
+          <div class="btot" id="u_cogsT"></div>
+        </div>
+      </details>`);
+    UBRK.forEach(b => {
+      const el = $("ub_" + b.k);
+      el.addEventListener("input", () => { S[b.k] = parse(el.value); update(); });
+      el.addEventListener("blur", () => { el.value = cnt(S[b.k]); });
+    });
+    return;
+  }
+  box.insertAdjacentHTML("beforeend", `
+    <div class="field">
+      <div class="top"><label for="${f.k}">${f.label}${f.code ? `<code>${f.code}</code>` : ""}</label>
+        <div class="inp"><input id="${f.k}" inputmode="decimal"${f.unit.length > 2 ? ' class="w"' : ""}><span>${f.unit}</span></div></div>
+      <input type="range" id="r_${f.k}" min="${f.min}" max="${f.max}" step="${f.step}" aria-label="${f.label}">
+      ${f.lvl ? `<div class="lvl" id="lv_${f.k}"></div>` : ""}
+      ${f.mo ? `<div class="lvl" id="mo_${f.k}"></div>` : ""}
+      ${f.hint ? `<div class="hint">${f.hint}</div>` : ""}
+    </div>`);
+  const num = $(f.k), rng = $("r_" + f.k);
+  num.addEventListener("input", () => { S[f.k] = parse(num.value); fit(rng, f, S[f.k]); update(); });
+  num.addEventListener("blur", () => { num.value = show(f.k, S[f.k]); });
+  rng.addEventListener("input", () => { S[f.k] = +rng.value; num.value = show(f.k, S[f.k]); update(); });
+});
+const goalIn = $("u_goal");
+goalIn.addEventListener("input", () => { S.goal = parse(goalIn.value); update(); });
+goalIn.addEventListener("blur", () => { goalIn.value = cnt(S.goal); });
+function fillInputs() {
+  FIELDS.forEach(f => { if (!f.k) return; $(f.k).value = show(f.k, S[f.k]); fit($("r_" + f.k), f, S[f.k]); });
+  UBRK.forEach(b => { $("ub_" + b.k).value = cnt(S[b.k]); });
+  goalIn.value = cnt(S.goal);
+}
+
+// Формула из таблицы: люди × CR1 × CR2 × ((чек − налог − себест.) × покупок − доп. расходы) − люди × цена привлечения − постоянные × 12
+// cpa — цена 1 касания; в рычагах и в «Сколько нужно продаж» она держится, поэтому при росте касаний растёт и реклама
+function calc(p, cpa) {
+  const clients = p.ua * p.cr1 / 100 * p.cr2 / 100;
+  const perClient = (p.avp - costOf(p)) * p.apc - p.first;
+  const adYear = p.ua * cpa;
+  return { clients, perClient, adYear, profit: clients * perClient - adYear - p.fix * 12 };
+}
+
+function update() {
+  save();
+  S.cogs = costOf(S); // налог + себестоимость, ₽ на заказ
+  $("mo_ua").textContent = `≈ ${cnt(S.ua / 12)} в месяц · ≈ ${one(Math.round(S.ua / 365 * 10) / 10)} в день`;
+  const parts = UBRK.filter(b => S[b.k] > 0), crub = costRub(S);
+  $("u_cogsV").textContent = rub(crub);
+  $("u_cogsS").innerHTML = `${S.avp > 0 ? pct(crub / S.avp * 100) : "—"} от чека · <u>${$("u_cogs").open ? "свернуть" : "расписать"}</u>`;
+  $("u_cogsT").innerHTML = `<b>Итого на один заказ:</b> ` + (parts.length ? parts.map(b => `${b.label.toLowerCase()} ${rub(S[b.k])}`).join(" + ") + " = " : "")
+    + `<b>${rub(crub)}</b>, с налогом ${rub(S.cogs)}`;
+  const cpa = S.ua > 0 ? S.ad * 12 / S.ua : 0;
+  const r = calc(S, cpa);
+  const adYear = S.ad * 12;
+  const profit = r.clients * r.perClient - adYear - S.fix * 12;
+  const month = profit / 12;
+
+  const tile = (id, cls, big, sub) => {
+    const t = $(id); t.className = "tile " + cls;
+    t.querySelector(".big").textContent = big; t.querySelector(".sub").textContent = sub;
+  };
+  tile("tMonth", profit > 0 ? "ok" : "bad", rub(month), `за год ${rub(profit)}`);
+  tile("tClient", r.perClient > 0 ? "" : "bad", rub(r.perClient), `до рекламы и постоянных · после всех расходов ${r.clients > 0 ? rub(profit / r.clients) : "—"}`);
+  tile("tNew", "", one(r.clients / 12), `продаж в месяц ${one(r.clients * S.apc / 12)}`);
+
+  const b = $("banner");
+  b.className = profit > 0 ? "banner" : "banner bad";
+  b.innerHTML = profit > 0
+    ? `<b>Поздравляем! Вы масштабируете прибыль.</b> С каждого клиента за год остаётся ${rub(r.perClient)} до рекламы и постоянных.`
+    : r.perClient > 0
+      ? `<b>Вы в убытке.</b> Клиентов не хватает, чтобы покрыть рекламу и постоянные расходы. Смотрите «Сколько нужно продаж» и «Где рычаг».`
+      : `<b>Вы в убытке с каждого клиента.</b> Себестоимость и доп. расходы съедают весь чек. Поднимайте чек или снижайте затраты на заказ.`;
+
+  // Цепочка за год
+  const step = (n, name, val, how, cls = "") =>
+    `<div class="step ${cls}"><div class="num">${n}</div><div class="name">${name}</div><div class="val">${val}</div><div class="how">${how}</div></div>`;
+  const leads = S.ua * S.cr1 / 100, sales = r.clients * S.apc;
+  const mo = (n, u = "") => `<small>≈ ${one(n / 12)}${u} в месяц</small>`;
+  $("u_chain").innerHTML =
+      step(1, "Касаний", cnt(S.ua) + mo(S.ua) + `<small>≈ ${one(Math.round(S.ua / 365 * 10) / 10)} в день</small>`, "за год, верх воронки")
+    + step(2, "Заявок", one(leads) + mo(leads), `касания × «из касаний в заявку» ${one(S.cr1)}%`)
+    + step(3, "Клиентов", one(r.clients) + mo(r.clients), `заявки × «из заявки в договор» ${one(S.cr2)}%`)
+    + step(4, "Продаж", one(sales) + mo(sales), `клиенты × ${one(S.apc)} покупки за год`)
+    + step(5, "Остаётся с клиентов", rub(r.clients * r.perClient), `(чек − налог − себестоимость) × покупки − доп. расходы = ${rub(r.perClient)} с клиента`)
+    + step(6, "Минус реклама", "−" + rub(adYear), `${rub(S.ad)} × 12; это ${one(cpa)} ₽ на 1 касание`, "minus")
+    + step(7, "Минус постоянные", "−" + rub(S.fix * 12), `${rub(S.fix)} × 12`, "minus")
+    + step(8, "Прибыль за год", rub(profit) + `<small>${rub(month)} в месяц</small>`, "что остаётся вам", profit >= 0 ? "main" : "main neg");
+
+  // Сколько продаж нужно: цена касания та же, поэтому реклама растёт вместе с касаниями.
+  // Касаний за год = (цель + постоянные) × 12 ÷ (что даёт одно касание с клиентов − его цена)
+  const perTouch = S.cr1 / 100 * S.cr2 / 100 * r.perClient - cpa;
+  const row = (name, g, cls = "") => {
+    if (!(perTouch > 0)) return `<tr class="${cls}"><td>${name}</td><td>${rub(g)}</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>`;
+    const ua = (g + S.fix) * 12 / perTouch;
+    const cl = Math.ceil(ua * S.cr1 / 100 * S.cr2 / 100);
+    const sm = Math.ceil(cl * S.apc / 12);
+    const lm = Math.ceil(ua * S.cr1 / 100 / 12);
+    return `<tr class="${cls}"><td>${name}</td><td>${rub(g)}</td><td>${cnt(cl)}</td><td>${cnt(sm)}</td><td>${cnt(lm)}</td><td>${rub(ua * cpa / 12)}</td></tr>`;
+  };
+  $("need").innerHTML = row("Выйти в ноль", 0) + row("Прибыль 100 000 в месяц", 100000) + row("Ваша цель", S.goal, "goal");
+  $("needNote").textContent = perTouch > 0 ? "" : "Рекламой эту цель не взять: одно касание стоит дороже, чем приносит. Сначала подтяните чек, конверсии или цену рекламы.";
+
+  drawLevers(cpa, profit);
+}
+
+const NORM0 = { cr1: { lo: 1, hi: 3 }, cr2: { lo: 3, hi: 10 }, apc: { lo: 1.1, hi: 1.3 }, ad: { lo: 50, hi: 25, down: true }, cap: 250000 };
+const N = loadNorms("azt-unit-norms", NORM0);
+// Доля рекламы: какая часть денег с клиентов (до рекламы и постоянных) уходит на их привлечение
+const adShare = r => r.clients > 0 && r.perClient > 0 ? r.adYear / (r.clients * r.perClient) * 100 : Infinity;
+
+function paintLights(r) {
+  const lv = (k, html) => { $("lv_" + k).innerHTML = html; };
+  ["cr1", "cr2", "apc"].forEach(k => {
+    const l = light(S[k], N[k]);
+    lv(k, `${dot(l)}сейчас ${LIGHT[l]} · ${normText(N[k], k === "apc" ? one : pct)}`);
+  });
+  const sh = adShare(r), la = isFinite(sh) ? light(sh, N.ad) : "r";
+  lv("ad", `${dot(la)}реклама съедает ${isFinite(sh) ? pct(sh) : "всё"} денег с клиентов · ${normText(N.ad)}`);
+  lv("avp", S.avp < N.cap
+    ? `потолок ${rub(N.cap)} · запас ${pct((N.cap / S.avp - 1) * 100)}`
+    : `${dot("y")}упёрлись в потолок ${rub(N.cap)}: дальше клиенты начнут уходить`);
+}
+
+const LV = [
+  { k: "cr1", name: "Из касаний в заявку",         do: "Понятное предложение, отзывы и объекты, точнее реклама.", cost: "стоит: время на настройку" },
+  { k: "cr2", name: "Из заявки в договор",       do: "Быстро перезванивать, дожимать КП, рассрочка.", cost: "стоит: время" },
+  { k: "apc", name: "Покупок 1 клиентом за год", do: "Обслуживание, второй этап работ, допродажа старым клиентам.", cost: "стоит: время" },
+  { k: "ad",  name: "Цена привлечения",          do: "Точнее настраивать рекламу, отключать дорогие объявления, сарафан.", cost: "стоит: время на настройку" },
+  { k: "avp", name: "Средний чек",               do: "Пакеты, допработы, цена ближе к потолку.", cost: "риск потерять часть клиентов" },
+];
+function drawLevers(cpa, base) {
+  const r0 = calc(S, cpa), sh = adShare(r0), T = S.goal * 12;
+  paintLights(r0);
+  const ok = r0.clients > 0 && r0.perClient > 0;
+  const need = T + S.ad * 12 + S.fix * 12; // нужно заработать с клиентов за год
+  const rows = LV.map(d => {
+    let l, t, p = { ...S }, c = cpa, now, goal = "";
+    if (d.k === "ad") {
+      l = isFinite(sh) ? light(sh, N.ad) : "r"; t = isFinite(sh) && S.ua > 0 ? nextStep(sh, N.ad) : null;
+      if (t != null) c = t / 100 * r0.clients * r0.perClient / S.ua;
+      now = `${LIGHT[l]}: реклама съедает ${pct(sh)} денег с клиентов` + (t != null ? ` → ${pct(t)}, реклама до ${rub(c * S.ua / 12)} в месяц` : "");
+      if (ok) {
+        const n = (r0.clients * r0.perClient - S.fix * 12 - T) / 12;
+        goal = n >= S.ad ? "Цели хватает и с нынешней рекламой." : n > 0 ? `Выйти на цель только этим: те же клиенты за ${rub(n)} рекламы в месяц.` : "Только удешевлением рекламы цель не взять.";
+      }
+    } else if (d.k === "avp") {
+      l = S.avp < N.cap ? "" : "y"; t = S.avp < N.cap ? N.cap : null;
+      if (t != null) p.avp = t;
+      now = t != null ? `${rub(S.avp)} → потолок ${rub(N.cap)}` : `упёрлись в потолок ${rub(N.cap)}`;
+      if (ok) {
+        const n = ((need / r0.clients + S.first) / S.apc + costRub(S)) / (1 - S.tx / 100);
+        goal = n <= S.avp ? "Цели хватает и с нынешним чеком." : `Выйти на цель только этим: нужен чек ${rub(n)}, ${n <= N.cap ? "в пределах потолка" : "выше потолка, только в паре с другими"}.`;
+      }
+    } else {
+      const f = d.k === "apc" ? one : pct;
+      l = light(S[d.k], N[d.k]); t = nextStep(S[d.k], N[d.k]);
+      if (t != null) p[d.k] = t;
+      now = `${LIGHT[l]}: ${f(S[d.k])}` + (t != null ? ` → ${f(t)}` : "");
+      if (ok) {
+        const n = d.k === "apc"
+          ? (need / r0.clients + S.first) / (S.avp - S.cogs)
+          : need / (S.ua * (d.k === "cr1" ? S.cr2 : S.cr1) / 100 * r0.perClient) * 100;
+        goal = verdictUp(n, S[d.k], N[d.k].hi, f);
+      }
+    }
+    const g = t != null ? (calc(p, c).profit - base) / 12 : 0;
+    return { ...d, l, now, g, goal, sub: t != null ? `в месяц · за год +${rub(g * 12)}` : "" };
+  }).sort((a, b) => b.g - a.g);
+  const max = Math.max(...rows.map(r => r.g), 1);
+  rows.forEach(r => { r.w = r.g > 0 ? r.g / max : 0; r.big = r.g > 0 ? "+" + rub(r.g) : "держать"; });
+
+  // Цифры без ориентира: просто сколько даёт шаг
+  const step = p => rub((calc({ ...S, ...p }, cpa).profit - base) / 12);
+  const per = S.cr1 / 100 * S.cr2 / 100 * r0.perClient - cpa;
+  const ex = [
+    `+1 000 касаний за год (реклама растёт вместе с ними): ${step({ ua: S.ua + 1000 })} в месяц.`
+      + (per > 0 ? ` Выйти на цель только касаниями: нужно ${cnt(Math.ceil((T + S.fix * 12) / per))} касаний за год.` : ""),
+    `Себестоимость −10 000 ₽ на заказ: +${step({ other: S.other - 10000 })} в месяц.`,
+    `Доп. расходы на 1-ю продажу −5 000 ₽: +${step({ first: Math.max(0, S.first - 5000) })} в месяц.`,
+  ];
+  $("u_levers").innerHTML = leverRows(rows) + `<div class="extra"><b>Без ориентира</b>${ex.map(x => `<div>${x}</div>`).join("")}</div>`;
+}
+
+$("u_reset").addEventListener("click", () => { S = { ...EXAMPLE }; fillInputs(); update(); });
+$("u_cogs").addEventListener("toggle", update);
+normsBox($("n_unit"), [
+  { k: "cr1", label: "Из касаний в заявку", unit: "%" },
+  { k: "cr2", label: "Из заявки в договор", unit: "%" },
+  { k: "apc", label: "Покупок 1 клиентом", unit: "раз" },
+  { k: "ad", label: "Реклама от денег с клиентов", unit: "%" },
+  { k: "cap", label: "Потолок чека", unit: "₽", single: true },
+], N, NORM0, "azt-unit-norms", update);
+fillInputs(); update();
+})();
+
+(() => {
+  const P = { decomp: "p_decomp", unit: "p_unit" };
+  function show(name) {
+    if (!P[name]) name = "decomp";
+    for (const k in P) {
+      document.getElementById(P[k]).hidden = k !== name;
+      document.getElementById("tab_" + k).setAttribute("aria-current", k === name ? "page" : "false");
+    }
+    try { localStorage.setItem("azt-tab", name); } catch (e) {}
+  }
+  document.querySelectorAll(".tabs a").forEach(a => a.addEventListener("click", e => {
+    e.preventDefault(); const n = a.dataset.tab; show(n);
+    try { history.replaceState(null, "", "#" + n); } catch (er) {}
+  }));
+  let start = location.hash.slice(1);
+  if (!P[start]) { try { start = localStorage.getItem("azt-tab") || "decomp"; } catch (e) { start = "decomp"; } }
+  show(start);
+})();
+</script>
+
+</body></html>
